@@ -1,0 +1,9 @@
+This code requires Boost.Spirit, Boost.Variant, Boost.Foreach in order to compile.  You can find them here:
+
+     	  	   		 		http://www.boost.org/
+
+Once you have the libraries installed and in your g++ include path, you can compile like so:
+
+g++ -o bf main.cpp brainf_ck.cpp
+
+Then, you'll find the bf binary in your current directory.  If you're using windows (without cygwin), then may God have mercy on your soul.
