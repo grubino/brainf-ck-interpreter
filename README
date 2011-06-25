@@ -7,3 +7,12 @@ Once you have the libraries installed and in your g++ include path, you can comp
 g++ -o bf main.cpp brainf_ck.cpp
 
 Then, you'll find the bf binary in your current directory.  If you're using windows (without cygwin), then may God have mercy on your soul.
+
+Once you have the bf binary, just type:
+
+./bf <brainf_ck source file> 
+
+At a command prompt.  I have included a couple of brainf_ck source files with this interpreter for testing.  One is from http://esoteric.sange.fi/brainfuck/utils/mandelbrot/ and the other is by Clifford Wolf http://www.clifford.at/bfcpu/.
+
+Let me know if you find any bugs or have any suggestions!
+Enjoy!
