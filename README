@@ -2,7 +2,7 @@ This code requires Boost.Spirit, Boost.Variant, Boost.Foreach in order to compil
 
      	  	   		 		http://www.boost.org/
 
-Once you have the libraries installed and in your g++ include path, you can compile like so:
+Once you have the libraries installed and in your g++ include path, you can compile like so (compiling will take a minute or so):
 
 g++ -o bf main.cpp brainf_ck.cpp
 
