@@ -20,6 +20,12 @@ ostream& operator<<(ostream& os, const bf_transfer_cell& tc) {
   return os;
 }
 
+ostream& operator<<(ostream& os, const bf_multi_transfer_cell& mtc) {
+  BOOST_FOREACH(bf_transfer_cell tc, mtc) {
+    os << "[" << tc.offset << ", " << tc.quantity << "]";
+  }
+  return os;
+}
 
 void turing_machine::process_command_sequence(const bf_command_sequence& c) {
 

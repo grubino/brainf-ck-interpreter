@@ -13,7 +13,10 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/spirit/include/qi.hpp>
 #include <boost/spirit/include/phoenix.hpp>
+
 #include <boost/fusion/include/adapt_struct.hpp>
+#include <boost/fusion/include/boost_tuple.hpp>
+
 #include <boost/variant/recursive_variant.hpp>
 #include <boost/foreach.hpp>
 
@@ -29,6 +32,9 @@ struct bf_command_sequence {
   bf_command_sequence(char c, int i)
   : m_command(c)
   , m_repetitions(i) {}
+  bf_command_sequence(vector<char> v)
+  : m_command(v[0])
+  , m_repetitions(v.size()) {}
 
   char m_command;
   int m_repetitions;
@@ -63,9 +69,15 @@ ostream& operator<<(ostream& os, const bf_transfer_cell& tc);
 
 
 
+typedef vector<bf_transfer_cell> bf_multi_transfer_cell;
+ostream& operator<<(ostream& os, const bf_multi_transfer_cell& tc);
+
+
+
 typedef boost::variant<
 bf_clear_cell
 , bf_transfer_cell
+  , bf_multi_transfer_cell
   > bf_known_command;
 
 
@@ -111,7 +123,6 @@ struct turing_machine {
     move_data_ptr(tc.offset);
     alter_data(tc.quantity * temp);
     move_data_ptr(-tc.offset);
-    process_command(bf_clear_cell());
   }
 
   bool is_zero() const { return (m_data[m_data_ptr] == 0); }
@@ -142,20 +153,28 @@ struct turing_machine_visitor : boost::static_visitor<> {
   turing_machine_visitor(turing_machine& tm)
     : m_tm(tm) {}
 
-  void operator()(const bf_known_command& kc) const {
-    boost::apply_visitor(*this, kc);
-  }
-  
   void operator()(const bf_clear_cell& cc) const {
     m_tm.process_command(cc);
   }
 
+  void operator()(const bf_multi_transfer_cell& mtc) const {
+    BOOST_FOREACH(bf_transfer_cell tc, mtc) {
+      m_tm.process_command(tc);
+    }
+    m_tm.process_command(bf_clear_cell());
+  }
+  
   void operator()(const bf_transfer_cell& tc) const {
     m_tm.process_command(tc);
+    m_tm.process_command(bf_clear_cell());
   }
   
   void operator()(bf_command_sequence& cs) const {
     m_tm.process_command_sequence(cs);
+  }
+  
+  void operator()(const bf_known_command& kc) const {
+    boost::apply_visitor(*this, kc);
   }
   
   void operator()(const std::vector<bf_command_variant>& v) const {
@@ -198,39 +217,18 @@ struct bf_grammar
     known_command_sequence %=
       clear_cell
       | transfer_cell
+      | multi_transfer_cell
       ;
     command_token =
-      eps[_a = val(0)] >> 
-      +(increment[_a += val(1)])
-      [_val = construct<bf_command_sequence>(
-					     val('+')
-					     , _a
-					     )]
-      | +(decrement[_a += val(1)])
-      [_val = construct<bf_command_sequence>(
-					     val('-')
-					     , _a
-					     )]
-      | +(move_right[_a += val(1)])
-      [_val = construct<bf_command_sequence>(
-					     val('>')
-					     , _a
-					     )]
-      | +(move_left[_a += val(1)])
-      [_val = construct<bf_command_sequence>(
-					     val('<')
-					     , _a
-					     )]
-      | +(put_output[_a += val(1)])
-      [_val = construct<bf_command_sequence>(
-					     val('.')
-					     , _a
-					     )]
-      | +(get_input[_a += val(1)])
-      [_val = construct<bf_command_sequence>(
-					     val(',')
-					     , _a
-					     )]
+      (
+       +increment
+       | +decrement
+       | +move_right
+       | +move_left
+       | +put_output
+       | +get_input
+       )
+      [_val = construct<bf_command_sequence>(_1)]
       ;
     
     clear_cell = boost::spirit::qi::string("[-]")[_val = construct<bf_clear_cell>()]
@@ -264,7 +262,67 @@ struct bf_grammar
       repeat(_a)[move_right] >>
 	close_bracket[_val = construct<bf_transfer_cell>(-_a, _b)]
       ;
+
+    multi_transfer_cell =
+      eps[_a = val(0)] >>
+      open_bracket >>
+      decrement >>
+      multi_transfer_cell_body
+      [
+       _a = at_c<0>(_1)
+       , _val = at_c<1>(_1)
+       ] >>
+      multi_transfer_cell_terminate(_a)
+      ;
     
+    multi_transfer_cell_body =
+      eps[_a = val(0)] >>
+      +(
+	multi_transfer_phrase(_a)[
+				  _a = at_c<0>(_1)
+				  , push_back(
+					      at_c<1>(_val)
+					      , at_c<1>(_1)
+					      )
+				  ]
+	)[at_c<0>(_val) = _a]
+      ;
+    multi_transfer_cell_terminate =
+      multi_transfer_cell_terminate_right(_r1)
+      | multi_transfer_cell_terminate_left(_r1)
+      ;
+    multi_transfer_cell_terminate_right =
+      repeat(-_r1)[move_right] >>
+      close_bracket
+      ;
+    multi_transfer_cell_terminate_left =
+      repeat(_r1)[move_left] >>
+      close_bracket
+      ;
+
+    multi_transfer_phrase =
+      eps[_a = _r1, _b = val(0)] >>
+      multi_transfer_seek_phrase[_a += _1] >>
+      multi_transfer_modify_phrase[
+				   _b += _1
+				   , at_c<0>(_val) = _a
+				   , at_c<1>(_val) = construct<bf_transfer_cell>(_a, _b)
+				   ]
+      ;
+
+    multi_transfer_seek_phrase =
+      +(
+	move_right[_val += val(1)]
+	| move_left[_val -= val(1)]
+	)
+      ;
+    multi_transfer_modify_phrase =
+      +(
+	increment[_val += val(1)]
+	| decrement[_val -= val(1)]
+	)
+      ;
+
     increment %= char_('+');
     decrement %= char_('-');
     move_right %= char_('>');
@@ -284,8 +342,17 @@ struct bf_grammar
     BOOST_SPIRIT_DEBUG_NODE(transfer_cell);
     BOOST_SPIRIT_DEBUG_NODE(transfer_cell_left);
     BOOST_SPIRIT_DEBUG_NODE(transfer_cell_right);
+    BOOST_SPIRIT_DEBUG_NODE(multi_transfer_cell);
+    BOOST_SPIRIT_DEBUG_NODE(multi_transfer_cell_body);
+    BOOST_SPIRIT_DEBUG_NODE(multi_transfer_cell_terminate);
+    BOOST_SPIRIT_DEBUG_NODE(multi_transfer_cell_terminate_right);
+    BOOST_SPIRIT_DEBUG_NODE(multi_transfer_cell_terminate_left);
+    BOOST_SPIRIT_DEBUG_NODE(multi_transfer_phrase);
+    BOOST_SPIRIT_DEBUG_NODE(multi_transfer_seek_phrase);
+    BOOST_SPIRIT_DEBUG_NODE(multi_transfer_modify_phrase);
     BOOST_SPIRIT_DEBUG_NODE(increment);
     BOOST_SPIRIT_DEBUG_NODE(decrement);
+    BOOST_SPIRIT_DEBUG_NODE(move_decide);
     BOOST_SPIRIT_DEBUG_NODE(move_right);
     BOOST_SPIRIT_DEBUG_NODE(move_left);
     BOOST_SPIRIT_DEBUG_NODE(get_input);
@@ -294,21 +361,56 @@ struct bf_grammar
   }
   
   rule<bf_command_string::iterator, vector<bf_expression>()> start;
+
   rule<bf_command_string::iterator, bf_expression()> expression;
   rule<bf_command_string::iterator, bf_statement()> statement;
+
   rule<bf_command_string::iterator, vector<bf_command_variant>()> command_sequence;
+
   rule<bf_command_string::iterator, bf_command_variant()> command_group;
-  rule<bf_command_string::iterator, bf_command_sequence(), locals<int> > command_token;
+  rule<bf_command_string::iterator, bf_command_sequence()> command_token;
   rule<bf_command_string::iterator, bf_known_command()> known_command_sequence;
+
   rule<bf_command_string::iterator, bf_clear_cell()> clear_cell;
   rule<bf_command_string::iterator, bf_transfer_cell()> transfer_cell;
   rule<bf_command_string::iterator, bf_transfer_cell(), locals<long, int> > transfer_cell_left;
   rule<bf_command_string::iterator, bf_transfer_cell(), locals<long, int> > transfer_cell_right;
   
+  rule<bf_command_string::iterator, bf_multi_transfer_cell(), locals<long> > multi_transfer_cell;
+
+  rule<
+    bf_command_string::iterator,
+    boost::tuple<long, bf_multi_transfer_cell>(),
+    locals<long>
+    > multi_transfer_cell_body;
+
+  rule<
+    bf_command_string::iterator,
+    void(long)
+    > multi_transfer_cell_terminate;
+  rule<
+    bf_command_string::iterator,
+    void(long)
+    > multi_transfer_cell_terminate_right;
+  rule<
+    bf_command_string::iterator,
+    void(long)
+    > multi_transfer_cell_terminate_left;
+
+  rule<
+    bf_command_string::iterator,
+    boost::tuple<long, bf_transfer_cell>(long),
+    locals<long, int>
+    > multi_transfer_phrase;
+  
+  rule<bf_command_string::iterator, long(), locals<long> > multi_transfer_seek_phrase;
+  rule<bf_command_string::iterator, int(), locals<int> > multi_transfer_modify_phrase;
+  
   rule<bf_command_string::iterator, char()> increment;
   rule<bf_command_string::iterator, char()> decrement;
   rule<bf_command_string::iterator, char()> move_left;
   rule<bf_command_string::iterator, char()> move_right;
+  rule<bf_command_string::iterator, char()> move_decide;
   rule<bf_command_string::iterator, char()> open_bracket;
   rule<bf_command_string::iterator, char()> close_bracket;
   rule<bf_command_string::iterator, char()> get_input;
