@@ -24,15 +24,23 @@ using namespace boost::spirit::qi;
 using namespace boost::phoenix;
 using namespace std;
 
+// a command string is a sequence of primitive brainf_ck tokens
 typedef vector<char> bf_command_string;
 
+/**
+ * @struct bf_command_sequence
+ * @brief make initializations and seeks constant time.
+ * often brainf_ck tokens are repeated many times when a value is initialized or when
+ * the turing machine seeks a cell which is somewhat far away from the current cell.
+ * bf_command_sequence offers a way to reduce the this from linear time to constant.
+ */
 struct bf_command_sequence {
 
   bf_command_sequence() {}
   bf_command_sequence(char c, int i)
   : m_command(c)
   , m_repetitions(i) {}
-  bf_command_sequence(vector<char> v)
+  bf_command_sequence(const vector<char>& v)
   : m_command(v[0])
   , m_repetitions(v.size()) {}
 
@@ -48,12 +56,18 @@ struct bf_command_sequence {
 ostream& operator<<(ostream& os, const bf_command_sequence& bfcs);
 
 
-
+/**
+ * @struct bf_clear_cell
+ * @brief optimized command type for brainf_ck sequence '[-]'.
+ */
 struct bf_clear_cell {};
 ostream& operator<<(ostream& os, const bf_clear_cell& cc);
 
 
-
+/**
+ * @struct bf_transfer_cell
+ * @brief optimized command type for brainf_ck sequences such as '[->>>+<<<]'.
+ */
 struct bf_transfer_cell {
 
   bf_transfer_cell() {}
@@ -68,12 +82,18 @@ struct bf_transfer_cell {
 ostream& operator<<(ostream& os, const bf_transfer_cell& tc);
 
 
-
+/**
+ * @typedef bf_multi_transfer_cell
+ * @brief multiple cells can be transferred with the patterns like '[->+>+<<]'
+ */
 typedef vector<bf_transfer_cell> bf_multi_transfer_cell;
 ostream& operator<<(ostream& os, const bf_multi_transfer_cell& tc);
 
 
-
+/**
+ * @typedef bf_known_command
+ * @brief branching type for optimizable commands
+ */
 typedef boost::variant<
 bf_clear_cell
 , bf_transfer_cell
@@ -81,16 +101,26 @@ bf_clear_cell
   > bf_known_command;
 
 
-
+/**
+ * @typedef bf_command_variant
+ * @brief from the point of view of the @turing_machine_visitor, these are atomic.
+ */
 typedef boost::variant<
 bf_known_command
 , bf_command_sequence
   > bf_command_variant;
 
 
-
+/**
+ * @struct bf_statement
+ * @brief statements consist of expressions enclosed in [].
+ */
 struct bf_statement;
 
+/**
+ * @typedef bf_expression
+ * @brief the main non-terminal type
+ */
 typedef boost::variant<
 boost::recursive_wrapper<bf_statement>
 , std::vector<bf_command_variant>
@@ -107,7 +137,10 @@ BOOST_FUSION_ADAPT_STRUCT(
 			  (std::vector<bf_expression>, stmt)
 			  )
 
-
+/**
+ * @struct turing_machine
+ * @brief interprets the stream of commands from the turing_machine_visitor.
+ */
 struct turing_machine {
 
   turing_machine()
@@ -141,12 +174,13 @@ struct turing_machine {
 
 };
 
-/*****************************************************************************
- * turing_machine_visitor
+/**
+ * @struct turing_machine_visitor
+ * @brief visitor dispatching parsed commands.
  * ======================
  * this structure acts as a dispatch for different command types from the
  * brainf*ck input.
- *****************************************************************************/
+ */
 
 struct turing_machine_visitor : boost::static_visitor<> {
 
@@ -195,13 +229,13 @@ struct turing_machine_visitor : boost::static_visitor<> {
   
 };
 
-/*****************************************************************************************
- * bf_grammar
+/**
+ * @struct bf_grammar
+ * @brief parse the raw brainf_ck input.
  * ==========
  * the grammar parses the input into optimized structures so that we don't have to deal
  * directly with the brainf*ck input.
- *****************************************************************************************/
-
+ */
 struct bf_grammar
   : grammar<bf_command_string::iterator, vector<bf_expression>()> {
 
