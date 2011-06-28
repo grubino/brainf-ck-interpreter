@@ -8,7 +8,6 @@
 #include <string>
 #include <deque>
 #include <vector>
-#include <stack>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/spirit/include/qi.hpp>
