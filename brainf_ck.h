@@ -4,11 +4,12 @@
 //#define BOOST_SPIRIT_DEBUG
 
 #include <iostream>
+#include <iomanip>
 #include <iterator>
 #include <string>
 #include <deque>
 #include <vector>
-#include <stack>
+#include <utility>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/spirit/include/qi.hpp>
@@ -20,9 +21,25 @@
 #include <boost/variant/recursive_variant.hpp>
 #include <boost/foreach.hpp>
 
+#include <boost/bind.hpp>
+
 using namespace boost::spirit::qi;
 using namespace boost::phoenix;
 using namespace std;
+
+struct bf_print_range {
+
+  size_t start;
+  size_t end;
+  
+};
+
+BOOST_FUSION_ADAPT_STRUCT(
+			  bf_print_range
+			  , (size_t, start)
+			  (size_t, end)
+			  );
+
 
 // a command string is a sequence of primitive brainf_ck tokens
 typedef vector<char> bf_command_string;
@@ -124,6 +141,7 @@ struct bf_statement;
 typedef boost::variant<
 boost::recursive_wrapper<bf_statement>
 , std::vector<bf_command_variant>
+  , bf_print_range
   > bf_expression;
 
 
@@ -133,9 +151,10 @@ struct bf_statement {
 };
 
 BOOST_FUSION_ADAPT_STRUCT(
-			  bf_statement,
-			  (std::vector<bf_expression>, stmt)
+			  bf_statement
+			  , (std::vector<bf_expression>, stmt)
 			  )
+
 
 /**
  * @struct turing_machine
@@ -143,6 +162,9 @@ BOOST_FUSION_ADAPT_STRUCT(
  */
 struct turing_machine {
 
+  typedef std::deque<char> turing_machine_tape;
+  typedef long cell_pointer;
+  
   turing_machine()
   : m_data(30000, 0),
     m_data_ptr(0) {}
@@ -165,12 +187,24 @@ struct turing_machine {
   void input_data();
 
   void print_state() {
-    cout << "data pointer position: " << m_data_ptr << endl;
-    cout << "data pointer content: " << static_cast<int>(m_data[m_data_ptr]) << endl;
+    cerr << setw(3) << static_cast<int>(m_data[m_data_ptr]) << " | ";
   }
 
-  std::deque<char> m_data;
-  long m_data_ptr;
+  void print_state(size_t pos) {
+    cerr << setw(3) << static_cast<int>(m_data[pos]) << " | ";
+  }
+
+  void print_state_range(size_t start, size_t end) {
+    for(size_t i = start ; i <= end ; ++i) {
+      if(i % 10 == 0)
+	cout << endl;
+      print_state(i);
+    }
+    cout << endl;
+  }
+
+  turing_machine_tape m_data;
+  cell_pointer m_data_ptr;
 
 };
 
@@ -224,6 +258,10 @@ struct turing_machine_visitor : boost::static_visitor<> {
       }
     }
   }
+
+  void operator()(const bf_print_range& pr) const {
+    m_tm.print_state_range(pr.start, pr.end);
+  }
   
   turing_machine& m_tm;
   
@@ -243,7 +281,11 @@ struct bf_grammar
     : bf_grammar::base_type(start) {
 
     start = +expression;
-    expression %= command_sequence | statement;
+    expression %=
+      command_sequence
+      | statement
+      | print_range_phrase
+      ;
     statement %= lit('[') >> +expression >> lit(']');
     command_sequence %= +command_group;
     command_group %= known_command_sequence | command_token;
@@ -262,7 +304,7 @@ struct bf_grammar
        | +put_output
        | +get_input
        )
-      [_val = construct<bf_command_sequence>(_1)]
+      [_val = construct<bf_command_sequence>(boost::spirit::_1)]
       ;
     
     clear_cell = boost::spirit::qi::string("[-]")[_val = construct<bf_clear_cell>()]
@@ -303,8 +345,8 @@ struct bf_grammar
       decrement >>
       multi_transfer_cell_body
       [
-       _a = at_c<0>(_1)
-       , _val = at_c<1>(_1)
+       _a = at_c<0>(boost::spirit::_1)
+       , _val = at_c<1>(boost::spirit::_1)
        ] >>
       multi_transfer_cell_terminate(_a)
       ;
@@ -313,10 +355,10 @@ struct bf_grammar
       eps[_a = val(0)] >>
       +(
 	multi_transfer_phrase(_a)[
-				  _a = at_c<0>(_1)
+				  _a = at_c<0>(boost::spirit::_1)
 				  , push_back(
 					      at_c<1>(_val)
-					      , at_c<1>(_1)
+					      , at_c<1>(boost::spirit::_1)
 					      )
 				  ]
 	)[at_c<0>(_val) = _a]
@@ -336,9 +378,9 @@ struct bf_grammar
 
     multi_transfer_phrase =
       eps[_a = _r1, _b = val(0)] >>
-      multi_transfer_seek_phrase[_a += _1] >>
+      multi_transfer_seek_phrase[_a += boost::spirit::_1] >>
       multi_transfer_modify_phrase[
-				   _b += _1
+				   _b += boost::spirit::_1
 				   , at_c<0>(_val) = _a
 				   , at_c<1>(_val) = construct<bf_transfer_cell>(_a, _b)
 				   ]
@@ -366,6 +408,10 @@ struct bf_grammar
     put_output %= char_('.');
     get_input %= char_(',');
 
+    print_range_phrase %=
+      print_range_token
+      >> lit('(') >> int_ >> lit(',') >> int_ >> lit(')');
+    print_range_token = lit('@');
     
     BOOST_SPIRIT_DEBUG_NODE(expression);
     BOOST_SPIRIT_DEBUG_NODE(statement);
@@ -449,6 +495,9 @@ struct bf_grammar
   rule<bf_command_string::iterator, char()> close_bracket;
   rule<bf_command_string::iterator, char()> get_input;
   rule<bf_command_string::iterator, char()> put_output;
+
+  rule<bf_command_string::iterator, bf_print_range()> print_range_phrase;
+  rule<bf_command_string::iterator, void()> print_range_token;
 
 };
 
