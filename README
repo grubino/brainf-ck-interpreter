@@ -1,4 +1,4 @@
-This code requires Boost.Spirit, Boost.Variant, Boost.Foreach in order to compile.  You can find them here:
+This code requires Boost.Spirit (>=v2), Boost.Variant, Boost.Foreach in order to compile.  You can find them here:
 
      	  	   		 		http://www.boost.org/
 
