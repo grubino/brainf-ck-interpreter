@@ -34,11 +34,9 @@ struct bf_print_range {
   
 };
 
-BOOST_FUSION_ADAPT_STRUCT(
-			  bf_print_range
+BOOST_FUSION_ADAPT_STRUCT(bf_print_range
 			  , (size_t, start)
-			  (size_t, end)
-			  );
+			  (size_t, end));
 
 
 // a command string is a sequence of primitive brainf_ck tokens
