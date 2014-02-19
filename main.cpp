@@ -1,4 +1,3 @@
-
 #include"brainf_ck.h"
 
 #include<boost/iterator/filter_iterator.hpp>
@@ -61,7 +60,7 @@ int main(int argc, char** argv) {
     }
     
   } else {
-    std::cout << "there was a problem parsing your program." << std::endl;
+    std::cerr << "there was a problem parsing your program." << std::endl;
   }
 
   
